@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DeepSeek Summarizer</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f4f4f8;
+      margin: 0;
+      padding: 2rem;
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+
+    textarea {
+      width: 100%;
+      height: 200px;
+      padding: 1rem;
+      font-size: 16px;
+      margin-top: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      resize: vertical;
+    }
+
+    button {
+      margin-top: 1rem;
+      padding: 12px 24px;
+      font-size: 16px;
+      background-color: #0077cc;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #005fa3;
+    }
+
+    #output {
+      margin-top: 2rem;
+      background-color: white;
+      border-radius: 8px;
+      padding: 1.5rem;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+      line-height: 1.6;
+    }
+
+    h3, h4 {
+      color: #0077cc;
+      margin-top: 1.5rem;
+    }
+
+    ul, ol {
+      padding-left: 1.5rem;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin: 1rem 0;
+      width: 100%;
+    }
+
+    table th, table td {
+      border: 1px solid #ccc;
+      padding: 0.5rem;
+      text-align: left;
+    }
+
+    table th {
+      background-color: #f0f8ff;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid #ddd;
+      margin: 1.5rem 0;
+    }
+
+.spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #0077cc;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  animation: spin 0.8s linear infinite;
+  margin: 1rem auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.collapsible {
+  cursor: pointer;
+  background-color: #eef7ff;
+  padding: 0.5rem;
+  border-radius: 6px;
+}
+
+.content {
+  padding: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+
+  </style>
+</head>
+<body>
+
+  <h1>Note Summarizer</h1>
+
+  <textarea id="inputText" placeholder="Paste your content to summarize..."></textarea>
+  <br>
+  <button onclick="summarize()">Summarize</button>
+
+  <div id="output"></div>
+<div id="exportButtons" style="margin-top: 1rem;"></div>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+
+<script>
+  async function summarize() {
+    const input = document.getElementById("inputText").value.trim();
+    const outputDiv = document.getElementById("output");
+    const exportDiv = document.getElementById("exportButtons");
+    outputDiv.innerHTML = '<div class="spinner"></div>';
+    exportDiv.innerHTML = "";
+
+    const prompt = `Summarize the following in clear, simple, and professional English using markdown-style formatting (headings, bullet points, tables, and emphasized notes) for easy exam revision:\n\n${input}`;
+
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer //Api key from openrouter",
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://mytedros.wordpress.com",
+          "X-Title": "Summarizer"
+        },
+        body: JSON.stringify({
+          model: "deepseek/deepseek-r1:free",
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      let content = data.choices?.[0]?.message?.content || "No response from DeepSeek.";
+      const formatted = formatMarkdown(content);
+
+      outputDiv.innerHTML = formatted;
+      addCollapsibleFunctionality();
+      exportDiv.innerHTML = `
+        <button onclick="exportToPDF()">📄 Export PDF</button>
+        <button onclick="exportToMarkdown()">📄 Export Markdown</button>
+      `;
+    } catch (err) {
+      outputDiv.innerHTML = `<span style="color:red;">Error: ${err.message}</span>`;
+    }
+  }
+
+  function formatMarkdown(content) {
+  // Remove ``` wrappers
+  content = content.replace(/^```(?:\w+)?\s*|```$/gm, '');
+
+  // Convert headers to collapsible sections
+  content = content
+    .replace(/^#### (.*)$/gm, "<h4 class='collapsible'>$1</h4><div class='content'>")
+    .replace(/^### (.*)$/gm, "<h3 class='collapsible'>$1</h3><div class='content'>")
+    .replace(/^## (.*)$/gm, "<h3 class='collapsible'>$1</h3><div class='content'>")
+    .replace(/^# (.*)$/gm, "<h3 class='collapsible'>$1</h3><div class='content'>");
+
+  // Bold/Italic
+  content = content
+    .replace(/\*\*\*(.*?)\*\*\*/g, "<strong><em>$1</em></strong>")
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.*?)\*/g, "<em>$1</em>");
+
+  // Horizontal rules
+  content = content.replace(/^---$/gm, "<hr>");
+
+  // Lists
+  content = content
+    .replace(/^\s*[-+*] (.*)$/gm, "<li>$1</li>")
+    .replace(/^\s*\d+\.\s+(.*)$/gm, "<li>$1</li>")
+    .replace(/(<li>.*<\/li>)/gms, "<ul>$1</ul>");
+
+  // ✅ Tables
+  const tableRegex = /((?:^\|.+\|\n)+)/gm;
+  content = content.replace(tableRegex, match => {
+    const lines = match.trim().split('\n');
+    if (lines.length < 2) return match; // Not a valid table
+
+    const headers = lines[0].split('|').slice(1, -1).map(h => `<th>${h.trim()}</th>`).join('');
+    const rows = lines.slice(2).map(row => {
+      const cols = row.split('|').slice(1, -1).map(cell => `<td>${cell.trim()}</td>`).join('');
+      return `<tr>${cols}</tr>`;
+    }).join('');
+
+    return `<table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
+  });
+
+  // Add <p> tags
+  content = content.replace(/\n{2,}/g, '</p><p>');
+  content = "<p>" + content + "</p>";
+
+  // Remove <p> around block elements
+  content = content.replace(/<p>(\s*<(h\d|ul|ol|table|hr)[^>]*>)/g, "$1");
+  content = content.replace(/(<\/(h\d|ul|ol|table|hr|tbody)>)<\/p>/g, "$1");
+
+  // Close all collapsible content sections
+  content = content.replace(/(<\/ul>|<\/table>|<hr>)/g, "$1</div>");
+
+  return content;
+}
+
+
+  function addCollapsibleFunctionality() {
+    document.querySelectorAll('.collapsible').forEach(header => {
+      header.style.cursor = 'pointer';
+      header.addEventListener('click', () => {
+        const content = header.nextElementSibling;
+        content.style.display = content.style.display === 'none' ? 'block' : 'none';
+      });
+      header.nextElementSibling.style.display = 'none';
+    });
+  }
+
+  function exportToPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.html(document.getElementById("output"), {
+      callback: function (pdf) {
+        pdf.save("summary.pdf");
+      },
+      x: 10,
+      y: 10
+    });
+  }
+
+  function exportToMarkdown() {
+    const text = document.getElementById("output").innerText;
+    const blob = new Blob([text], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.download = "summary.md";
+    link.href = url;
+    link.click();
+  }
+</script>
+
+</body>
+</html>
